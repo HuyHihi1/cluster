@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: server-a
+  labels:
+    app: server-a
+spec:
+  selector:
+    app: server-a
+  ports:
+    - protocol: TCP
+      port: 8080
+      targetPort: 8080
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: server-b
+  labels:
+    app: server-b
+spec:
+  selector:
+    app: server-b
+  ports:
+    - protocol: TCP
+      port: 8080
+      targetPort: 8080
+  type: ClusterIP

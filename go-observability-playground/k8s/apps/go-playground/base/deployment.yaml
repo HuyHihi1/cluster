@@ -1,0 +1,61 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: server-a
+  labels:
+    app: server-a
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: server-a
+  template:
+    metadata:
+      labels:
+        app: server-a
+    spec:
+      containers:
+        - name: service
+          image: go-observability-playground:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+          env:
+            - name: SERVICE_NAME
+              value: server-a
+            - name: OTLP_ENDPOINT
+              value: tempo:4317
+            - name: NATS_URL
+              value: nats://nats:4222
+            - name: REDIS_URL
+              value: redis:6379
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: server-b
+  labels:
+    app: server-b
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: server-b
+  template:
+    metadata:
+      labels:
+        app: server-b
+    spec:
+      containers:
+        - name: service
+          image: go-observability-playground:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: SERVICE_NAME
+              value: server-b
+            - name: OTLP_ENDPOINT
+              value: tempo:4317
+            - name: NATS_URL
+              value: nats://nats:4222
+            - name: REDIS_URL
+              value: redis:6379

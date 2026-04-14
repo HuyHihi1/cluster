@@ -1,0 +1,62 @@
+version: '3'
+
+tasks:
+  cluster:create:
+    desc: Create a new local kind cluster
+    cmd: kind create cluster --name observability-playground
+
+  cluster:delete:
+    desc: Delete the local kind cluster
+    cmd: kind delete cluster --name observability-playground
+
+  argocd:install:
+    desc: Install ArgoCD into the cluster
+    cmds:
+      - kubectl create namespace argocd || true
+      - kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+
+  argocd:apply-apps:
+    desc: Apply all ArgoCD Applications from k8s/argocd/ apps and infrastructures
+    cmds:
+      - kubectl apply -f k8s/argocd/infrastructures/
+      - kubectl apply -f k8s/argocd/apps/
+
+  argocd:port-forward:
+    desc: Port forward ArgoCD UI to localhost:8080. Password is auto-generated and can be retrieved via another command if needed.
+    cmds:
+      - kubectl port-forward svc/argocd-server -n argocd 8080:443 &
+      - echo "Get password: kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath=\"{.data.password}\" | base64 -d"
+
+  docker:build:
+    desc: Build local docker image
+    cmd: docker build -t go-observability-playground:latest .
+
+  docker:push:
+    desc: Push docker image to Docker Hub (require login)
+    vars:
+      DOCKER_USERNAME: '{{.DOCKER_USERNAME | default "huyhihi1"}}'
+    cmds:
+      - docker tag go-observability-playground:latest {{.DOCKER_USERNAME}}/go-observability-playground:latest
+      - docker push {{.DOCKER_USERNAME}}/go-observability-playground:latest
+
+  observability:port-forward:
+    desc: Port forward observability tools
+    cmds:
+      - kubectl port-forward svc/grafana 3000:80 -n default &
+      - kubectl port-forward svc/prometheus-server 9090:80 -n default &
+      - kubectl port-forward svc/pyroscope 4040:4040 -n default &
+      - kubectl port-forward svc/tempo 3200:3100 -n default &
+      - echo "Grafana 3000, Prometheus 9090, Pyroscope 4040, Tempo 3200"
+
+  test:load:
+    desc: Run a basic load loop to test tracing and profiling
+    cmds:
+      - |
+        while true; do
+          curl -s http://localhost:8080/api/v1/compute > /dev/null
+          curl -s http://localhost:8080/api/v1/memory > /dev/null
+          curl -s http://localhost:8080/api/v1/mock-db > /dev/null
+          curl -s http://localhost:8080/api/v1/trigger-async > /dev/null
+          echo "Requests sent."
+          sleep 3
+        done

@@ -20,7 +20,9 @@ jobs:
           go-version: '1.22'
 
       - name: Verify dependencies
+        working-directory: ./go-observability-playground
         run: go mod verify
 
       - name: Run tests
+        working-directory: ./go-observability-playground
         run: go test ./... -v

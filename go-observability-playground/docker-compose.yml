@@ -1,0 +1,91 @@
+version: "3.9"
+
+services:
+  server-a:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      - SERVICE_NAME=server-a
+      - OTLP_ENDPOINT=tempo:4317
+      - NATS_URL=nats://nats:4222
+      - REDIS_URL=redis:6379
+    depends_on:
+      - tempo
+      - nats
+      - redis
+
+  server-b:
+    build: .
+    environment:
+      - SERVICE_NAME=server-b
+      - OTLP_ENDPOINT=tempo:4317
+      - NATS_URL=nats://nats:4222
+      - REDIS_URL=redis:6379
+    depends_on:
+      - tempo
+      - nats
+      - redis
+
+  nats:
+    image: nats:latest
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+
+  redis:
+    image: redis:latest
+    ports:
+      - "6379:6379"
+
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+    ports:
+      - "9090:9090"
+
+  tempo:
+    image: grafana/tempo:2.3.0
+    command: [ "-config.file=/etc/tempo.yaml" ]
+    volumes:
+      - ./config/tempo.yml:/etc/tempo.yaml
+    ports:
+      - "3200:3200" # tempo
+      - "4317:4317" # otlp grpc
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - ./config/grafana-datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml
+    depends_on:
+      - prometheus
+      - tempo
+      - pyroscope
+
+  pyroscope:
+    image: grafana/pyroscope:latest
+    ports:
+      - "4040:4040"
+    command:
+      - 'server'
+    volumes:
+      - ./config/pyroscope.yml:/etc/pyroscope/config.yaml
+    depends_on:
+      - server-a
+
+  # load-generator:
+  #   image: curlimages/curl
+  #   command:
+  #     - /bin/sh
+  #     - -c
+  #     - "while true; do curl -s http://server-a:8080/api/v1/compute > /dev/null; curl -s http://server-a:8080/api/v1/memory > /dev/null; curl -s http://server-a:8080/api/v1/mock-db > /dev/null; curl -s http://server-a:8080/api/v1/trigger-async > /dev/null; sleep 3; done"
+  #   depends_on:
+  #     - server-a

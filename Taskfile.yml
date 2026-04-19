@@ -1,63 +1,91 @@
 version: '3'
 
+vars:
+  CLUSTER_NAME: observability-playground
+  DOCKER_USERNAME: '{{.DOCKER_USERNAME | default "huyhihi1"}}'
+
 tasks:
-  cluster:create:
-    desc: Create a new local kind cluster
-    cmd: kind create cluster --name observability-playground
+  # --- Cluster Management ---
+  01-cluster-create:
+    desc: "01. Create a new local kind cluster"
+    cmd: kind create cluster --name {{.CLUSTER_NAME}}
 
-  cluster:delete:
-    desc: Delete the local kind cluster
-    cmd: kind delete cluster --name observability-playground
+  02-cluster-delete:
+    desc: "02. Delete the local kind cluster"
+    cmd: kind delete cluster --name {{.CLUSTER_NAME}}
 
-  argocd:install:
-    desc: Install ArgoCD into the cluster
+  # --- ArgoCD Management ---
+  03-argocd-install:
+    desc: "03. Install ArgoCD into the cluster (with server-side apply)"
     cmds:
       - kubectl create namespace argocd || true
       - kubectl apply --server-side --force-conflicts -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
 
-  argocd:apply-apps:
-    desc: Apply all ArgoCD Applications from k8s/argocd/ apps and infrastructures
+  04-argocd-apply:
+    desc: "04. Apply ArgoCD Applications (Infrastructure & Apps)"
     cmds:
-      - kubectl apply -f k8s/argocd/infrastructures/
+      - kubectl apply -f k8s/infrastructure/
       - kubectl apply -f k8s/argocd/apps/
 
-  argocd:port-forward:
-    desc: Port forward ArgoCD UI to localhost:8080. Password is auto-generated and can be retrieved via another command if needed.
+  05-argocd-password:
+    desc: "05. [Advanced] Get the initial ArgoCD admin password"
     cmds:
-      - kubectl port-forward svc/argocd-server -n argocd 8080:443 &
       - |
-        echo 'Get password: kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d'
+        echo "ArgoCD Username: admin"
+        echo -n "ArgoCD Password: "
+        kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d
+        echo ""
 
-  docker:build:
-    desc: Build local docker image
-    cmd: docker build -t go-observability-playground:latest ./go-observability-playground
-
-  docker:push:
-    desc: Push docker image to Docker Hub (require login)
-    vars:
-      DOCKER_USERNAME: '{{.DOCKER_USERNAME | default "huyhihi1"}}'
+  # --- Port Forwarding ---
+  06-port-forward-argo:
+    desc: "06. Port forward ArgoCD UI to https://localhost:8080"
     cmds:
-      - docker tag go-observability-playground:latest {{.DOCKER_USERNAME}}/go-observability-playground:latest
+      - kubectl port-forward svc/argocd-server -n argocd 8080:443
+
+  07-port-forward-obs:
+    desc: "07. Port forward Observability tools (Grafana, Prom, Pyro, Tempo)"
+    cmds:
+      - |
+        echo "Grafana: http://localhost:3000 (admin/admin)"
+        echo "Prometheus: http://localhost:9090"
+        echo "Pyroscope: http://localhost:4040"
+        echo "Tempo: http://localhost:3200"
+        kubectl port-forward svc/grafana 3000:80 -n default &
+        kubectl port-forward svc/prometheus-server 9090:80 -n default &
+        kubectl port-forward svc/pyroscope 4040:4040 -n default &
+        kubectl port-forward svc/tempo 3200:3100 -n default
+        wait
+
+  # --- Docker & Build ---
+  08-docker-build-push:
+    desc: "08. Build and Push docker image to Docker Hub"
+    cmds:
+      - docker build -t {{.DOCKER_USERNAME}}/go-observability-playground:latest ./go-observability-playground
       - docker push {{.DOCKER_USERNAME}}/go-observability-playground:latest
 
-  observability:port-forward:
-    desc: Port forward observability tools
+  # --- Debug & Health ---
+  09-health-check:
+    desc: "09. [Advanced] Check the health of all ArgoCD Applications"
     cmds:
-      - kubectl port-forward svc/grafana 3000:80 -n default &
-      - kubectl port-forward svc/prometheus-server 9090:80 -n default &
-      - kubectl port-forward svc/pyroscope 4040:4040 -n default &
-      - kubectl port-forward svc/tempo 3200:3100 -n default &
-      - echo "Grafana 3000, Prometheus 9090, Pyroscope 4040, Tempo 3200"
+      - kubectl get applications.argoproj.io -n argocd
 
-  test:load:
-    desc: Run a basic load loop to test tracing and profiling
+  10-clean-all:
+    desc: "10. [Advanced] Clean up all resources (Delete apps and cluster)"
+    cmds:
+      - kubectl delete -f k8s/argocd/apps/ --ignore-not-found=true
+      - kubectl delete -f k8s/infrastructure/ --ignore-not-found=true
+      - task: 02-cluster-delete
+
+  11-test-load:
+    desc: "11. Run a basic load loop to test tracing and profiling"
     cmds:
       - |
+        echo "Starting load generator... Press Ctrl+C to stop."
         while true; do
           curl -s http://localhost:8080/api/v1/compute > /dev/null
           curl -s http://localhost:8080/api/v1/memory > /dev/null
           curl -s http://localhost:8080/api/v1/mock-db > /dev/null
           curl -s http://localhost:8080/api/v1/trigger-async > /dev/null
-          echo "Requests sent."
+          date +"[%Y-%m-%d %H:%M:%S] Requests sent to server-a"
           sleep 3
         done

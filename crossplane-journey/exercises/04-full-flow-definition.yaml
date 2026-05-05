@@ -1,0 +1,73 @@
+# Định nghĩa API và Logic cho Full Flow
+# 1. CompositeResourceDefinition (XRD)
+apiVersion: apiextensions.crossplane.io/v1
+kind: CompositeResourceDefinition
+metadata:
+  name: xquickapps.study.crossplane.io
+spec:
+  group: study.crossplane.io
+  names:
+    kind: XQuickApp
+    plural: xquickapps
+  claimNames:
+    kind: QuickApp
+    plural: quickapps
+  versions:
+  - name: v1alpha1
+    served: true
+    referenceable: true
+    schema:
+      openAPIV3Schema:
+        type: object
+        properties:
+          spec:
+            type: object
+            properties:
+              appName:
+                type: string
+            required:
+            - appName
+---
+# 2. Composition (Logic thực thi)
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: quickapp-kubernetes
+  labels:
+    provider: kubernetes
+spec:
+  compositeTypeRef:
+    apiVersion: study.crossplane.io/v1alpha1
+    kind: XQuickApp
+  resources:
+    # Tài nguyên 1: Namespace
+    - name: app-namespace
+      base:
+        apiVersion: kubernetes.crossplane.io/v1alpha1
+        kind: Object
+        spec:
+          forProvider:
+            manifest:
+              apiVersion: v1
+              kind: Namespace
+      patches:
+        - fromFieldPath: "spec.appName"
+          toFieldPath: "spec.forProvider.manifest.metadata.name"
+    
+    # Tài nguyên 2: ConfigMap bên trong Namespace đó
+    - name: app-configmap
+      base:
+        apiVersion: kubernetes.crossplane.io/v1alpha1
+        kind: Object
+        spec:
+          forProvider:
+            manifest:
+              apiVersion: v1
+              kind: ConfigMap
+              metadata:
+                name: app-config
+              data:
+                welcome: "Chào mừng bạn đến với ứng dụng của Crossplane!"
+      patches:
+        - fromFieldPath: "spec.appName"
+          toFieldPath: "spec.forProvider.manifest.metadata.namespace"

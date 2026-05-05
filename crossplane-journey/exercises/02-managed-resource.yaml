@@ -1,0 +1,17 @@
+# Bài tập 3: Tạo Managed Resource
+# Mục tiêu: Dùng Crossplane để tạo 1 K8s Namespace.
+# Nếu bạn xóa file này hoặc xóa tài nguyên này, Crossplane sẽ tự tạo lại (Reconcile).
+
+apiVersion: kubernetes.crossplane.io/v1alpha1
+kind: Object
+metadata:
+  name: example-namespace
+spec:
+  forProvider:
+    manifest:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: crossplane-test-area
+  providerConfigRef:
+    name: default

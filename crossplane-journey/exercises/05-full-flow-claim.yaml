@@ -1,0 +1,8 @@
+# Yêu cầu tài nguyên (Claim) - Dành cho Developer
+apiVersion: study.crossplane.io/v1alpha1
+kind: QuickApp
+metadata:
+  namespace: default
+  name: my-cool-app
+spec:
+  appName: project-x-namespace

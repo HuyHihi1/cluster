@@ -89,3 +89,70 @@ tasks:
           date +"[%Y-%m-%d %H:%M:%S] Requests sent to server-a"
           sleep 3
         done
+
+  # --- Crossplane & Crossview (UI) ---
+  12-crossplane-install:
+    desc: "12. Install Crossplane into the cluster"
+    cmds:
+      - helm repo add crossplane-stable https://charts.crossplane.io/stable
+      - helm repo update
+      - helm install crossplane --namespace crossplane-system --create-namespace crossplane-stable/crossplane
+
+  13-crossview-install:
+    desc: "13. Install Crossview (Web UI for Crossplane) with 1-click"
+    cmds:
+      - helm repo add crossview https://crossplane-contrib.github.io/crossview
+      - helm repo update
+      - |
+        helm install crossview crossview/crossview \
+          --namespace crossview \
+          --create-namespace \
+          --set secrets.dbPassword=study-crossplane-123 \
+          --set secrets.sessionSecret=$(openssl rand -base64 32)
+      - echo "Crossview is being installed. Please wait a few minutes for pods to be ready."
+
+  14-crossview-ui:
+    desc: "14. Port forward Crossview UI to http://localhost:3001"
+    cmds:
+      - |
+        echo "Access Crossview UI: http://localhost:3001"
+        kubectl port-forward svc/crossview -n crossview 3001:3001
+
+  # --- Crossplane Full Flow Journey ---
+  15-full-flow-setup:
+    desc: "15. [Platform Admin] Setup XRD and Composition for QuickApp"
+    cmds:
+      - kubectl apply -f crossplane-journey/exercises/04-full-flow-definition.yaml
+
+  16-full-flow-claim:
+    desc: "16. [Developer] Request a QuickApp through a Claim"
+    cmds:
+      - kubectl apply -f crossplane-journey/exercises/05-full-flow-claim.yaml
+
+  17-full-flow-check:
+    desc: "17. [Verification] Check the resources created by Crossplane"
+    cmds:
+      - |
+        echo "--- Checking QuickApp Claim ---"
+        kubectl get quickapps
+        echo "\n--- Checking Automatically Created Namespace ---"
+        kubectl get ns project-x-namespace
+        echo "\n--- Checking ConfigMap inside that Namespace ---"
+        kubectl get cm -n project-x-namespace
+
+  18-drift-test:
+    desc: "18. [Experiment] Test Drift Detection: Manually modify a resource and watch Crossplane fix it"
+    cmds:
+      - |
+        echo "Step 1: Current data in ConfigMap (Original)"
+        kubectl get cm app-config -n project-x-namespace -o jsonpath='{.data.welcome}'
+        echo "\n\nStep 2: Manually changing data to something WRONG (Drift)"
+        kubectl patch cm app-config -n project-x-namespace --type merge -p '{"data":{"welcome":"HACKED BY MANUAL CHANGE!"}}'
+        echo "Check now: "
+        kubectl get cm app-config -n project-x-namespace -o jsonpath='{.data.welcome}'
+        echo "\n\nStep 3: Wait for Crossplane to Reconcile (Detect & Fix)..."
+        echo "Waiting 30 seconds..."
+        sleep 30
+        echo "Final Check (Should be back to original):"
+        kubectl get cm app-config -n project-x-namespace -o jsonpath='{.data.welcome}'
+        echo ""
